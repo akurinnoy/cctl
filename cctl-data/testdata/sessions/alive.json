@@ -1,0 +1,12 @@
+{
+  "pid": 99999,
+  "sessionId": "test-session-alive",
+  "cwd": "/tmp/test-project",
+  "startedAt": 1777550000000,
+  "version": "2.1.119",
+  "kind": "interactive",
+  "entrypoint": "cli",
+  "name": "[test-project] feature",
+  "updatedAt": 1777550856192,
+  "status": "idle"
+}

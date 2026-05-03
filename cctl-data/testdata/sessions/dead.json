@@ -1,0 +1,12 @@
+{
+  "pid": 1,
+  "sessionId": "test-session-dead",
+  "cwd": "/tmp/dead-project",
+  "startedAt": 1776800000000,
+  "version": "2.1.119",
+  "kind": "interactive",
+  "entrypoint": "cli",
+  "name": "",
+  "updatedAt": 0,
+  "status": "unknown"
+}

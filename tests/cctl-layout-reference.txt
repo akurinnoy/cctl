@@ -1,0 +1,8 @@
+Active Sessions  1 busy · 11 idle · 6 stale
+
+PROJECT                      PID  STATUS       AGE  SESSION
+personal_assistant         29125  BUSY         <1m  [personal-assistant]
+  └ You're building CLI tooling to manage 30+ concurrent Claude Code sessions. We implemented cctl (standalone bash+jq CL...
+che-dashboard              39769  IDLE          6m  [che-dashboard] issues
+  └ We fixed the workspace name field resetting when the backup image URL changes on the Restore from Backup page. The bu...
+agent_md_lab               40259  IDLE         53m  

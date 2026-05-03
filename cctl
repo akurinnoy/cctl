@@ -1,0 +1,344 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -t 1 ]]; then
+    BOLD=$'\033[1m'
+    DIM=$'\033[2m'
+    RESET=$'\033[0m'
+    GREEN=$'\033[32m'
+    YELLOW=$'\033[33m'
+    CYAN=$'\033[36m'
+    MAGENTA=$'\033[35m'
+    GRAY=$'\033[90m'
+else
+    BOLD="" DIM="" RESET="" GREEN="" YELLOW="" CYAN="" MAGENTA="" GRAY=""
+fi
+
+usage() {
+    cat <<'EOF'
+Usage: cctl [command]
+
+Commands:
+  (default)       Interactive session picker (requires fzf)
+                  Falls back to 'ls' if fzf is not installed
+  ls [-s field]   Show all active Claude Code sessions
+                  Sort: age (default), project, pid, status, session
+  pick [-s field] Interactive session picker (explicit)
+  switch <target> Activate iTerm2 window for a session (macOS only)
+                  <target> can be a PID or project name
+
+Examples:
+  cctl                        # interactive picker
+  cctl ls                     # list all sessions
+  cctl ls -s project          # sort by project name
+  cctl pick -s status         # pick from status-sorted list
+  cctl switch 29125           # switch by PID
+  cctl switch che-dashboard   # switch by project name
+EOF
+}
+
+cmd_ls() {
+    local sort_field="age"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -s|--sort) sort_field="${2:-age}"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+
+    local data
+    data=$(cctl-data sessions 2>/dev/null)
+
+    local count
+    count=$(echo "$data" | jq 'length' 2>/dev/null)
+    [[ -z "$count" || "$count" == "0" ]] && { echo "No active sessions"; return; }
+
+    local count_busy=0 count_ask=0 count_idle=0 count_stale=0
+    local -a sort_entries=()
+    local -a row_blocks=()
+    local idx=0
+
+    while IFS=$'\t' read -r slug pid label age name recap next_action needs_attention session_id updated_at started_at; do
+        local label_color
+        case "$label" in
+            BUSY)  label_color="$GREEN"; (( ++count_busy )) ;;
+            ASK)   label_color="$MAGENTA"; (( ++count_ask )) ;;
+            IDLE)  label_color="$YELLOW"; (( ++count_idle )) ;;
+            *)     label_color="$GRAY"; (( ++count_stale )) ;;
+        esac
+
+        local notify_marker=""
+        [[ "$needs_attention" == "true" ]] && notify_marker=" *"
+
+        [[ "$name" == "null" || "$name" == "" || "$name" == "-" ]] && name=""
+
+        local block
+        printf -v block "${BOLD}%-24s${RESET} %7s  ${label_color}%-9s${RESET} %6s  %s\n" \
+            "$slug" "$pid" "${label}${notify_marker}" "$age" "$name"
+
+        if [[ -n "$recap" && "$recap" != "null" && "$recap" != "-" ]]; then
+            local done_line="$recap"
+            if (( ${#done_line} > 120 )); then
+                done_line="${done_line:0:117}..."
+            fi
+            local tmp
+            printf -v tmp "  ${DIM}└ %s${RESET}\n" "$done_line"
+            block+="$tmp"
+        fi
+
+        if [[ -n "$next_action" && "$next_action" != "null" && "$next_action" != "-" ]]; then
+            local tmp
+            printf -v tmp "  ${DIM}└ ${CYAN}Next:${RESET}${DIM} %s${RESET}\n" "$next_action"
+            block+="$tmp"
+        fi
+
+        row_blocks+=("$block")
+
+        local sort_key ts
+        ts=$updated_at
+        [[ "$label" == "STALE" ]] && ts=$(( updated_at > 0 ? updated_at : started_at ))
+
+        case "$sort_field" in
+            project) sort_key="$slug" ;;
+            pid)     sort_key=$(printf "%010d" "$pid") ;;
+            status)  case "$label" in BUSY) sort_key="1";; ASK) sort_key="2";; IDLE) sort_key="3";; *) sort_key="4";; esac ;;
+            session) sort_key="${name:-zzz}" ;;
+            *)       sort_key=$(printf "%020d" "$ts") ;;
+        esac
+        sort_entries+=("$(printf '%s\t%d' "$sort_key" "$idx")")
+        (( ++idx ))
+    done < <(echo "$data" | jq -r '.[] | [.slug, .pid, .label, .age, (.name // "-"), (.recap // "-"), (.nextAction // "-"), .needsAttention, .sessionId, .updatedAt, .startedAt] | map(if . == "" then "-" else . end) | @tsv')
+
+    if [[ ${#row_blocks[@]} -eq 0 ]]; then
+        echo "No active sessions"
+        return
+    fi
+
+    local sort_flags
+    case "$sort_field" in
+        age)     sort_flags="-k1,1rn" ;;
+        pid)     sort_flags="-k1,1n" ;;
+        status)  sort_flags="-k1,1n" ;;
+        *)       sort_flags="-k1,1" ;;
+    esac
+
+    local summary=""
+    (( count_busy > 0 )) && summary="${GREEN}${count_busy} busy${RESET}"
+    if (( count_ask > 0 )); then
+        [[ -n "$summary" ]] && summary+=" · "
+        summary+="${MAGENTA}${count_ask} ask${RESET}"
+    fi
+    if (( count_idle > 0 )); then
+        [[ -n "$summary" ]] && summary+=" · "
+        summary+="${YELLOW}${count_idle} idle${RESET}"
+    fi
+    if (( count_stale > 0 )); then
+        [[ -n "$summary" ]] && summary+=" · "
+        summary+="${GRAY}${count_stale} stale${RESET}"
+    fi
+
+    echo "${BOLD}Active Sessions${RESET}  ${summary}"
+    echo ""
+    printf "${DIM}%-24s %7s  %-9s %6s  %s${RESET}\n" "PROJECT" "PID" "STATUS" "AGE" "SESSION"
+
+    local sorted_indices
+    sorted_indices=$(printf '%s\n' "${sort_entries[@]}" | sort -t$'\t' $sort_flags | cut -f2)
+
+    while read -r i; do
+        printf '%s' "${row_blocks[$i]}"
+    done <<< "$sorted_indices"
+}
+
+cmd_recap() {
+    cctl-data recap "${1:-}"
+}
+
+cmd_pick() {
+    if ! command -v fzf &>/dev/null; then
+        echo "ERROR: fzf is required for pick mode (brew install fzf)" >&2
+        exit 1
+    fi
+
+    local full_output
+    full_output=$(cmd_ls "$@")
+
+    [[ -z "$full_output" ]] && return 0
+
+    local selection
+    selection=$(printf '%s\n' "$full_output" \
+        | tail -n +4 \
+        | grep -v '^  ' \
+        | fzf --ansi --no-sort \
+              --prompt="session> " \
+              --preview-window=down:5:wrap \
+              --preview-label=" recap " \
+              --preview="cctl-data recap {2}" \
+        ) || return 0
+
+    local pid
+    pid=$(printf '%s' "$selection" | perl -pe 's/\e\[[0-9;]*m//g' | awk '{print $2}')
+
+    [[ -z "$pid" ]] && return 0
+    cmd_switch "$pid"
+
+    local my_tty
+    my_tty=$(tty 2>/dev/null || true)
+    [[ -n "$my_tty" ]] && osascript -e "
+tell application \"iTerm2\"
+    repeat with w in windows
+        repeat with t in tabs of w
+            repeat with s in sessions of t
+                if tty of s is \"$my_tty\" then
+                    close w
+                    return
+                end if
+            end repeat
+        end repeat
+    end repeat
+end tell
+" 2>/dev/null || true
+}
+
+resolve_name_to_pid() {
+    local target="$1"
+    local matches=()
+
+    while IFS=$'\t' read -r pid slug; do
+        if [[ "$slug" == "$target" ]]; then
+            matches+=("$pid")
+        fi
+    done < <(cctl-data sessions | jq -r '.[] | [.pid, .slug] | @tsv' 2>/dev/null)
+
+    if [[ ${#matches[@]} -eq 0 ]]; then
+        echo "ERROR: No active session found for project \"${target}\"" >&2
+        return 1
+    elif [[ ${#matches[@]} -eq 1 ]]; then
+        echo "${matches[0]}"
+    else
+        echo "ERROR: Multiple sessions match \"${target}\":" >&2
+        for mpid in "${matches[@]}"; do
+            echo "  PID ${mpid}" >&2
+        done
+        echo "Specify the PID directly: cctl switch <PID>" >&2
+        return 1
+    fi
+}
+
+cmd_switch() {
+    local target="${1:-}"
+    if [[ -z "$target" ]]; then
+        echo "Usage: cctl switch <PID|project-name>" >&2
+        exit 1
+    fi
+
+    local pid
+    if [[ "$target" =~ ^[0-9]+$ ]]; then
+        pid="$target"
+    else
+        pid=$(resolve_name_to_pid "$target") || exit 1
+    fi
+
+    if ! ps -p "$pid" -o pid= &>/dev/null; then
+        echo "ERROR: PID ${pid} is not running" >&2
+        exit 1
+    fi
+
+    if [[ "$(uname -s)" != "Darwin" ]]; then
+        echo "ERROR: Switch requires macOS (detected: $(uname -s))" >&2
+        exit 1
+    fi
+
+    if [[ "${TERM_PROGRAM:-}" != "iTerm.app" ]]; then
+        echo "ERROR: Switch requires iTerm2 (detected: ${TERM_PROGRAM:-unknown})" >&2
+        exit 1
+    fi
+
+    if ! osascript -e 'tell application "System Events" to (name of processes) contains "iTerm2"' 2>/dev/null | grep -q true; then
+        echo "ERROR: iTerm2 is not running" >&2
+        exit 1
+    fi
+
+    # Walk parent chain collecting TTYs — Claude's tty often differs from
+    # the iTerm2 session tty because of nested shell processes.
+    local ttys=()
+    local current_pid="$pid"
+    for _ in 1 2 3 4 5; do
+        local tty_short
+        tty_short=$(ps -p "$current_pid" -o tty= 2>/dev/null | tr -d ' ' || true)
+        [[ -z "$tty_short" ]] && break
+        ttys+=("/dev/$tty_short")
+        current_pid=$(ps -p "$current_pid" -o ppid= 2>/dev/null | tr -d ' ' || true)
+        [[ -z "$current_pid" || "$current_pid" == "0" || "$current_pid" == "1" ]] && break
+    done
+
+    if [[ ${#ttys[@]} -eq 0 ]]; then
+        echo "ERROR: PID ${pid} not found or has no tty" >&2
+        exit 1
+    fi
+
+    local conditions=""
+    for t in "${ttys[@]}"; do
+        [[ -n "$conditions" ]] && conditions="$conditions or "
+        conditions="${conditions}tty of s is \"$t\""
+    done
+
+    local result
+    result=$(osascript -e "
+tell application \"iTerm2\"
+    repeat with w in windows
+        repeat with t in tabs of w
+            repeat with s in sessions of t
+                if $conditions then
+                    select t
+                    select s
+                    set index of w to 1
+                    activate
+                    return \"ok:\" & (tty of s)
+                end if
+            end repeat
+        end repeat
+    end repeat
+    return \"not_found\"
+end tell
+" 2>/dev/null)
+
+    if [[ "$result" == ok:* ]]; then
+        local matched_tty="${result#ok:}"
+        echo "Switched to PID ${pid} (${matched_tty})"
+
+        local session_id
+        session_id=$(cctl-data sessions | jq -r ".[] | select(.pid == $pid) | .sessionId" 2>/dev/null)
+        [[ -n "$session_id" ]] && cctl-data visited "$session_id" 2>/dev/null
+    else
+        echo "ERROR: No iTerm2 session found for PID ${pid} (tried: ${ttys[*]})" >&2
+        exit 1
+    fi
+}
+
+if ! command -v cctl-data &>/dev/null; then
+    echo "ERROR: cctl-data is required but not found (cd cctl-data && go build -o ~/bin/cctl-data .)" >&2
+    exit 1
+fi
+
+if ! command -v jq &>/dev/null; then
+    echo "ERROR: jq is required but not found" >&2
+    exit 1
+fi
+
+case "${1:-}" in
+    ""  )               if command -v fzf &>/dev/null && [[ -t 1 ]]; then
+                            cmd_pick
+                        else
+                            cmd_ls
+                        fi ;;
+    ls)                 cmd_ls "${@:2}" ;;
+    pick | p)           cmd_pick "${@:2}" ;;
+    recap)              cmd_recap "${2:-}" ;;
+    switch | sw)        cmd_switch "${2:-}" ;;
+    help | -h | --help) usage ;;
+    *)
+        echo "Unknown command: $1" >&2
+        usage >&2
+        exit 1
+        ;;
+esac
