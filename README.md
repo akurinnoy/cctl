@@ -7,6 +7,8 @@ A CLI for managing concurrent Claude Code sessions in iTerm2.
 - View recaps of what each session is working on
 - Get notified when sessions need your attention (`*` marker)
 
+![cctl interactive picker with session list and recap preview](screenshot.png)
+
 ## Prerequisites
 
 - **macOS** (AppleScript is used for iTerm2 window switching)
