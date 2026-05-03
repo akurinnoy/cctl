@@ -15,8 +15,8 @@ check:
 
 install: build check
 	mkdir -p $(PREFIX)
-	cp cctl $(PREFIX)/cctl
-	cp cctl-data/cctl-data $(PREFIX)/cctl-data
+	install -m 755 cctl $(PREFIX)/cctl
+	install -m 755 cctl-data/cctl-data $(PREFIX)/cctl-data
 	chmod +x $(PREFIX)/cctl $(PREFIX)/cctl-data
 	@echo "Installed cctl and cctl-data to $(PREFIX)"
 	@echo "Make sure $(PREFIX) is in your PATH"

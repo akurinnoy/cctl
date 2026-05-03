@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# Fake cctl-data for screenshot demos. Outputs canned JSON.
+set -euo pipefail
+
+case "${1:-}" in
+sessions)
+cat << 'JSON'
+[
+  {
+    "pid": 41023,
+    "alive": true,
+    "cwd": "/Users/dev/projects/web-api",
+    "slug": "web-api",
+    "status": "busy",
+    "label": "BUSY",
+    "updatedAt": 1746200000000,
+    "startedAt": 1746199000000,
+    "age": "<1m",
+    "name": "[web-api] auth migration",
+    "sessionId": "a1b2c3d4",
+    "recap": "Migrating OAuth2 token storage from Redis to PostgreSQL. Added new migration file, updated token service.",
+    "recapSource": "away_summary",
+    "nextAction": "",
+    "needsAttention": false
+  },
+  {
+    "pid": 39812,
+    "alive": true,
+    "cwd": "/Users/dev/projects/mobile-app",
+    "slug": "mobile-app",
+    "status": "waiting",
+    "label": "ASK",
+    "updatedAt": 1746199500000,
+    "startedAt": 1746195000000,
+    "age": "8m",
+    "name": "[mobile-app] dark mode",
+    "sessionId": "e5f6g7h8",
+    "recap": "Implemented dark mode theme switching. Need to decide: should we persist the preference in UserDefaults or sync via CloudKit?",
+    "recapSource": "remember",
+    "nextAction": "Should we persist the preference in UserDefaults or sync via CloudKit?",
+    "needsAttention": true
+  },
+  {
+    "pid": 38901,
+    "alive": true,
+    "cwd": "/Users/dev/projects/auth-service",
+    "slug": "auth-service",
+    "status": "idle",
+    "label": "IDLE",
+    "updatedAt": 1746198000000,
+    "startedAt": 1746190000000,
+    "age": "33m",
+    "name": "[auth-service] rate limiting",
+    "sessionId": "i9j0k1l2",
+    "recap": "Added per-endpoint rate limiting middleware with Redis sliding window. All 12 tests passing.",
+    "recapSource": "away_summary",
+    "nextAction": "",
+    "needsAttention": true
+  },
+  {
+    "pid": 37456,
+    "alive": true,
+    "cwd": "/Users/dev/projects/dashboard",
+    "slug": "dashboard",
+    "status": "idle",
+    "label": "IDLE",
+    "updatedAt": 1746194000000,
+    "startedAt": 1746180000000,
+    "age": "1h",
+    "name": "[dashboard] chart component",
+    "sessionId": "m3n4o5p6",
+    "recap": "Refactored D3 chart component to use React refs instead of direct DOM manipulation. Reduced bundle size by 18KB.",
+    "recapSource": "remember",
+    "nextAction": "",
+    "needsAttention": false
+  },
+  {
+    "pid": 36200,
+    "alive": true,
+    "cwd": "/Users/dev/projects/infra",
+    "slug": "infra",
+    "status": "idle",
+    "label": "IDLE",
+    "updatedAt": 1746186000000,
+    "startedAt": 1746170000000,
+    "age": "4h",
+    "name": "[infra] terraform modules",
+    "sessionId": "q7r8s9t0",
+    "recap": "Split monolithic Terraform config into reusable modules for VPC, ECS, and RDS. Validated plan on staging.",
+    "recapSource": "away_summary",
+    "nextAction": "",
+    "needsAttention": false
+  },
+  {
+    "pid": 34100,
+    "alive": true,
+    "cwd": "/Users/dev/projects/docs-site",
+    "slug": "docs-site",
+    "status": "idle",
+    "label": "IDLE",
+    "updatedAt": 1746100000000,
+    "startedAt": 1746090000000,
+    "age": "1d",
+    "name": "",
+    "sessionId": "u1v2w3x4",
+    "recap": "Updated API reference docs for v3 endpoints. Added code examples for authentication flow.",
+    "recapSource": "away_summary",
+    "nextAction": "",
+    "needsAttention": false
+  },
+  {
+    "pid": 29999,
+    "alive": true,
+    "cwd": "/Users/dev/projects/legacy-api",
+    "slug": "legacy-api",
+    "status": "unknown",
+    "label": "STALE",
+    "updatedAt": 0,
+    "startedAt": 1745900000000,
+    "age": "Apr 29",
+    "name": "[legacy-api]",
+    "sessionId": "y5z6a7b8",
+    "recap": "",
+    "recapSource": "",
+    "nextAction": "",
+    "needsAttention": false
+  }
+]
+JSON
+;;
+recap)
+  case "${2:-}" in
+    41023) echo "Migrating OAuth2 token storage from Redis to PostgreSQL. Added new migration file, updated token service. Waiting for CI to finish running integration tests against the new schema." ;;
+    39812) echo "Implemented dark mode theme switching. Need to decide: should we persist the preference in UserDefaults or sync via CloudKit?" ;;
+    38901) echo "Added per-endpoint rate limiting middleware with Redis sliding window. All 12 tests passing. Ready to merge after one more review." ;;
+    37456) echo "Refactored D3 chart component to use React refs instead of direct DOM manipulation. Reduced bundle size by 18KB." ;;
+    36200) echo "Split monolithic Terraform config into reusable modules for VPC, ECS, and RDS. Validated plan on staging." ;;
+    34100) echo "Updated API reference docs for v3 endpoints. Added code examples for authentication flow." ;;
+    *) ;;
+  esac
+;;
+visited) ;;
+esac
